@@ -87,6 +87,20 @@ void MideaDehumComponent::set_error_sensor(sensor::Sensor *s) {
 }
 #endif
 
+// Current temperature sensor
+#ifdef USE_MIDEA_DEHUM_TEMPERATURE
+void MideaDehumComponent::set_temperature_sensor(sensor::Sensor *s) {
+  this->temperature_sensor_ = s;
+}
+#endif
+
+// Current humidity sensor
+#ifdef USE_MIDEA_DEHUM_HUMIDITY
+void MideaDehumComponent::set_humidity_sensor(sensor::Sensor *s) {
+  this->humidity_sensor_ = s;
+}
+#endif
+
 // Tank level sensor
 #ifdef USE_MIDEA_DEHUM_TANK_LEVEL
 void MideaDehumComponent::set_tank_level_sensor(sensor::Sensor *s) {
@@ -814,6 +828,11 @@ void MideaDehumComponent::parseState() {
   if (temp >= 0.0f) temp += temperature_decimal; else temp -= temperature_decimal;
   float new_temp = temp;
   uint8_t new_error = serialRxBuf[31];
+
+#ifdef USE_MIDEA_DEHUM_SENSOR
+  bool humidity_changed = (new_humidity != this->state_.currentHumidity);
+  bool temperature_changed = fabs(new_temp - this->state_.currentTemperature) > 0.1f;
+#endif
   
   // --- Compare and update core state fields ---
   if (new_power != this->state_.powerOn) { this->state_.powerOn = new_power; updated = true; }
@@ -827,6 +846,15 @@ void MideaDehumComponent::parseState() {
   if (updated || first_run) {
     this->sendClimateState();
   }
+
+#ifdef USE_MIDEA_DEHUM_SENSOR
+  if (this->humidity_sensor_ && (first_run || humidity_changed)) {
+    this->humidity_sensor_->publish_state(this->state_.currentHumidity);
+  }
+  if (this->temperature_sensor_ && (first_run || temperature_changed)) {
+    this->temperature_sensor_->publish_state(this->state_.currentTemperature);
+  }
+#endif
 
 #if defined(USE_MIDEA_DEHUM_ERROR) || defined(USE_MIDEA_DEHUM_BUCKET)
     if (first_run || this->error_state_ != new_error) {

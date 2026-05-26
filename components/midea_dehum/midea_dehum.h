@@ -144,6 +144,12 @@ class MideaDehumComponent : public climate::Climate,
 #ifdef USE_MIDEA_DEHUM_ERROR
   void set_error_sensor(sensor::Sensor *s);
 #endif
+#ifdef USE_MIDEA_DEHUM_TEMPERATURE
+  void set_temperature_sensor(sensor::Sensor *s);
+#endif
+#ifdef USE_MIDEA_DEHUM_HUMIDITY
+  void set_humidity_sensor(sensor::Sensor *s);
+#endif
 #ifdef USE_MIDEA_DEHUM_TANK_LEVEL
   void set_tank_level_sensor(sensor::Sensor *s);
 #endif
@@ -269,6 +275,12 @@ class MideaDehumComponent : public climate::Climate,
 
 #ifdef USE_MIDEA_DEHUM_ERROR
   sensor::Sensor *error_sensor_{nullptr};
+#endif
+#ifdef USE_MIDEA_DEHUM_TEMPERATURE
+  sensor::Sensor *temperature_sensor_{nullptr};
+#endif
+#ifdef USE_MIDEA_DEHUM_HUMIDITY
+  sensor::Sensor *humidity_sensor_{nullptr};
 #endif
 #if defined(USE_MIDEA_DEHUM_ERROR) || defined(USE_MIDEA_DEHUM_BUCKET)
   uint8_t error_state_{0};

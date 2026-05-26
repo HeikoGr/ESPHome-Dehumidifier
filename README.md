@@ -25,6 +25,8 @@ Supported entities:
 | Entity Type     | Description |
 |------------------|-------------|
 | **Climate**      | Power, mode, fan speed, swing (vertical/horizontal) and presets |
+| **Temperature Sensor (optional)** | Reports the current room temperature as a native sensor |
+| **Humidity Sensor (optional)** | Reports the current room humidity as a native sensor |
 | **Bucket Full Binary Sensor (optional)** | "Bucket Full" indicator |
 | **Clean Filter Binary Sensor (optional)** | "Clean Filter" notification if supported |
 | **Defrosting Binary Sensor (optional)** | Defrosting indicator if supported |
@@ -160,10 +162,15 @@ button:
     filter_cleaned:
       name: "Reset Filter Cleaning"
 
-# Optional error sensor remove this block if not needed
+# Optional current environmental sensors for area assignment and automations
 sensor:
   - platform: midea_dehum
     midea_dehum_id: midea_dehum_comp
+    temperature:
+      name: "Current Temperature"
+    humidity:
+      name: "Current Humidity"
+# Optional error sensor remove this block if not needed
     error:
       name: "Error Code"
 # Optional tank water level sensor (if supported)
@@ -241,9 +248,9 @@ All entities appear automatically in Home Assistant with native ESPHome support.
 
 * Fan speed control
 
-* Humidity Control Target & Current humidity (via native ESPHome climate interface)
+* Humidity Control Target via native ESPHome climate interface
 
-* Current Temperature (integer)
+* Current temperature and humidity as native sensor entities
 
 * pm2.5 level
 
