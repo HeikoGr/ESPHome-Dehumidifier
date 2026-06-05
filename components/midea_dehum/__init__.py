@@ -9,6 +9,7 @@ MideaDehum = midea_dehum_ns.class_("MideaDehumComponent", cg.Component, uart.UAR
 
 CONF_MIDEA_DEHUM_ID = "midea_dehum_id"
 CONF_STATUS_POLL_INTERVAL = "status_poll_interval"
+CONF_STATE_RESYNC_INTERVAL = "state_resync_interval"
 CONF_HANDSHAKE = "handshake_enabled"
 
 CONFIG_SCHEMA = (
@@ -17,6 +18,7 @@ CONFIG_SCHEMA = (
         cv.Required(CONF_UART_ID): cv.use_id(uart.UARTComponent),
 
         cv.Optional(CONF_STATUS_POLL_INTERVAL, default=1000): cv.positive_int,
+        cv.Optional(CONF_STATE_RESYNC_INTERVAL, default=60000): cv.positive_int,
 
         cv.Optional("display_mode_setpoint", default="Setpoint"): cv.string,
         cv.Optional("display_mode_continuous", default="Continuous"): cv.string,
@@ -35,6 +37,7 @@ async def to_code(config):
     await cg.register_component(var, config)
 
     cg.add(var.set_status_poll_interval(config[CONF_STATUS_POLL_INTERVAL]))
+    cg.add(var.set_state_resync_interval(config[CONF_STATE_RESYNC_INTERVAL]))
 
     cg.add(var.set_display_mode_setpoint(config["display_mode_setpoint"]))
     cg.add(var.set_display_mode_continuous(config["display_mode_continuous"]))

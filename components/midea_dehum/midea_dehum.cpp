@@ -10,8 +10,6 @@ namespace midea_dehum {
 
 static const char *const TAG = "midea_dehum";
 
-static bool first_run = true;
-
 static uint8_t networkStatus[19];
 static uint8_t currentHeader[10];
 static uint8_t getStatusCommand[21] = {
@@ -812,6 +810,10 @@ void MideaDehumComponent::processPacket(uint8_t *data, size_t len) {
 // Get the status sent from device
 void MideaDehumComponent::parseState() {
   bool updated = false;
+  const uint32_t now = millis();
+  const bool force_publish = !this->state_initialized_ ||
+                             (this->state_resync_interval_ > 0 &&
+                              (now - this->last_state_publish_ms_) >= this->state_resync_interval_);
 
   // --- Parse core operating parameters ---
   bool new_power = (serialRxBuf[11] & 0x01) != 0;
@@ -843,21 +845,22 @@ void MideaDehumComponent::parseState() {
   if (fabs(new_temp - this->state_.currentTemperature) > 0.1f) { this->state_.currentTemperature = new_temp; updated = true; }
   if (new_error != this->error_state_) { this->error_state_ = new_error; updated = true; }
 
-  if (updated || first_run) {
+  if (updated || force_publish) {
     this->sendClimateState();
+    this->last_state_publish_ms_ = now;
   }
 
 #ifdef USE_MIDEA_DEHUM_SENSOR
-  if (this->humidity_sensor_ && (first_run || humidity_changed)) {
+  if (this->humidity_sensor_ && (force_publish || humidity_changed)) {
     this->humidity_sensor_->publish_state(this->state_.currentHumidity);
   }
-  if (this->temperature_sensor_ && (first_run || temperature_changed)) {
+  if (this->temperature_sensor_ && (force_publish || temperature_changed)) {
     this->temperature_sensor_->publish_state(this->state_.currentTemperature);
   }
 #endif
 
 #if defined(USE_MIDEA_DEHUM_ERROR) || defined(USE_MIDEA_DEHUM_BUCKET)
-    if (first_run || this->error_state_ != new_error) {
+    if (force_publish || this->error_state_ != new_error) {
       this->error_state_ = new_error;
 #ifdef USE_MIDEA_DEHUM_ERROR
       if(this->error_sensor_) {this->error_sensor_->publish_state(this->error_state_);}
@@ -867,7 +870,7 @@ void MideaDehumComponent::parseState() {
 
 #ifdef USE_MIDEA_DEHUM_BUCKET
     bool bucket_full = (this->error_state_ == 38);
-    if (first_run || bucket_full != this->bucket_full_state_) {
+    if (force_publish || bucket_full != this->bucket_full_state_) {
       this->bucket_full_state_ = bucket_full;
       if (this->bucket_full_sensor_) this->bucket_full_sensor_->publish_state(bucket_full);
     }
@@ -915,7 +918,7 @@ void MideaDehumComponent::parseState() {
 
   if (this->timer_number_) {
     static float last_timer_hours = -1.0f;  // invalid initial value
-    if (first_run || fabs(timer_hours - last_timer_hours) > 0.01f) {
+    if (force_publish || fabs(timer_hours - last_timer_hours) > 0.01f) {
       this->set_timer_hours(timer_hours, true);
       last_timer_hours = timer_hours;
     }
@@ -927,7 +930,7 @@ void MideaDehumComponent::parseState() {
   // --- Panel light / brightness class (bits 7–6) ---
 #ifdef USE_MIDEA_DEHUM_LIGHT
   uint8_t new_light_class = (serialRxBuf[19] & 0xC0) >> 6;
-  if (new_light_class != this->light_class_ || first_run) {
+  if (new_light_class != this->light_class_ || force_publish) {
     this->light_class_ = new_light_class;
     if (this->light_select_) {
       const char* light_str =
@@ -942,7 +945,7 @@ void MideaDehumComponent::parseState() {
   // --- Ionizer (bit 6) ---
 #ifdef USE_MIDEA_DEHUM_ION
   bool new_ion_state = (serialRxBuf[19] & 0x40) != 0;
-  if (new_ion_state != this->ion_state_ || first_run) {
+  if (new_ion_state != this->ion_state_ || force_publish) {
     if(this->state_.powerOn) {
       this->ion_state_ = new_ion_state;
       if (this->ion_switch_) this->ion_switch_->publish_state(new_ion_state);
@@ -953,7 +956,7 @@ void MideaDehumComponent::parseState() {
   // --- Sleep mode (bit 5) ---
 #ifdef USE_MIDEA_DEHUM_SLEEP
   bool new_sleep_state = (serialRxBuf[19] & 0x20) != 0;
-  if (new_sleep_state != this->sleep_state_  || first_run) {
+  if (new_sleep_state != this->sleep_state_  || force_publish) {
     if(this->state_.powerOn) {
       this->sleep_state_ = new_sleep_state;
       if (this->sleep_switch_) this->sleep_switch_->publish_state(new_sleep_state);
@@ -964,7 +967,7 @@ void MideaDehumComponent::parseState() {
   // --- Optional: Pump bits (3–4) ---
 #ifdef USE_MIDEA_DEHUM_PUMP
   bool new_pump_state = (serialRxBuf[19] & 0x08) != 0;
-  if (new_pump_state != this->pump_state_  || first_run) {
+  if (new_pump_state != this->pump_state_  || force_publish) {
     if(this->state_.powerOn) {
       this->pump_state_ = new_pump_state;
       if (this->pump_switch_) this->pump_switch_->publish_state(new_pump_state);
@@ -975,7 +978,7 @@ void MideaDehumComponent::parseState() {
   // --- Filter cleaning bit (7) ---
 #ifdef USE_MIDEA_DEHUM_FILTER
   bool new_filter_request = (serialRxBuf[19] & 0x80) >> 7;
-  if (new_filter_request != this->filter_request_state_  || first_run) {
+  if (new_filter_request != this->filter_request_state_  || force_publish) {
     this->filter_request_state_ = new_filter_request;
     if (this->filter_request_sensor_) {
       this->filter_request_sensor_->publish_state(new_filter_request);
@@ -988,7 +991,7 @@ void MideaDehumComponent::parseState() {
   uint8_t tank_byte = serialRxBuf[20];
   uint8_t new_tank_level = tank_byte & 0x7F;
 
-  if (new_tank_level != this->tank_level_  || first_run) {
+  if (new_tank_level != this->tank_level_  || force_publish) {
     this->tank_level_ = new_tank_level;
     if (this->tank_level_sensor_)
       this->tank_level_sensor_->publish_state(new_tank_level);
@@ -999,7 +1002,7 @@ void MideaDehumComponent::parseState() {
 #ifdef USE_MIDEA_DEHUM_DEFROST
   bool new_defrost = (serialRxBuf[20] & 0x80) != 0;
 
-  if (new_defrost != this->defrost_state_ || first_run) {
+  if (new_defrost != this->defrost_state_ || force_publish) {
     this->defrost_state_ = new_defrost;
     if (this->defrost_sensor_)
       this->defrost_sensor_->publish_state(new_defrost);
@@ -1010,7 +1013,7 @@ void MideaDehumComponent::parseState() {
 #ifdef USE_MIDEA_DEHUM_PM25
   uint16_t new_pm25_value = static_cast<uint16_t>(serialRxBuf[23]) |
                         (static_cast<uint16_t>(serialRxBuf[24]) << 8);
-  if (new_pm25_value != this->pm25_ || first_run) {
+  if (new_pm25_value != this->pm25_ || force_publish) {
     this->pm25_ = new_pm25_value;
     if (this->pm25_sensor_) {
       this->pm25_sensor_->publish_state(new_pm25_value);
@@ -1021,7 +1024,7 @@ void MideaDehumComponent::parseState() {
   // --- Horizontal swing (byte 29, bit 4) ---
 #ifdef USE_MIDEA_DEHUM_HORIZONTAL_SWING
   bool new_horizontal_swing_state = (serialRxBuf[29] & 0x10) != 0;
-  if (new_horizontal_swing_state != this->horizontal_swing_state_ || first_run) { 
+  if (new_horizontal_swing_state != this->horizontal_swing_state_ || force_publish) { 
     if(this->state_.powerOn) {
       this->horizontal_swing_state_ = new_horizontal_swing_state;
       this->sendClimateState();
@@ -1032,7 +1035,7 @@ void MideaDehumComponent::parseState() {
   // --- Vertical swing (byte 29, bit 5) ---
 #ifdef USE_MIDEA_DEHUM_SWING
   bool new_swing_state = (serialRxBuf[29] & 0x20) != 0;
-  if (new_swing_state != this->swing_state_ || first_run) { 
+  if (new_swing_state != this->swing_state_ || force_publish) { 
     if(this->state_.powerOn) {
       this->swing_state_ = new_swing_state;
       this->sendClimateState();
@@ -1041,7 +1044,7 @@ void MideaDehumComponent::parseState() {
 #endif
 
   this->clearRxBuf();
-  first_run = false;
+  this->state_initialized_ = true;
 }
 
 climate::ClimateTraits MideaDehumComponent::traits() {
