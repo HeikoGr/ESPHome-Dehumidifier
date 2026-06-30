@@ -641,10 +641,13 @@ void MideaDehumComponent::handleUart() {
   if (!this->uart_) return;
 
   static size_t rx_len = 0;
+  uint16_t processed_bytes = 0;
+  const uint16_t max_bytes_per_loop = 96;
 
-  while (this->uart_->available()) {
+  while (this->uart_->available() && processed_bytes < max_bytes_per_loop) {
     uint8_t byte_in;
     if (!this->uart_->read_byte(&byte_in)) break;
+    processed_bytes++;
 
     if (rx_len < sizeof(serialRxBuf)) {
       serialRxBuf[rx_len++] = byte_in;
@@ -668,13 +671,16 @@ void MideaDehumComponent::handleUart() {
       }
 
       if (rx_len >= expected_len) {
-
-        std::vector<uint8_t> local_data(serialRxBuf, serialRxBuf + rx_len);
-        this->processPacket(local_data.data(), local_data.size());
+        this->processPacket(serialRxBuf, expected_len);
 
         rx_len = 0;
       }
     }
+  }
+
+  // Give ESP8266 background tasks time when UART traffic is continuous.
+  if (this->uart_->available()) {
+    yield();
   }
 }
 
@@ -725,14 +731,14 @@ void MideaDehumComponent::performHandshakeStep() {
 #endif
 // Process of the RX Packet received
 void MideaDehumComponent::processPacket(uint8_t *data, size_t len) {
-  // Pretty print packet
-  std::string hex_str;
-  hex_str.reserve(len * 3);
-  for (size_t i = 0; i < len; i++) {
-    char buf[4];
-    snprintf(buf, sizeof(buf), "%02X ", data[i]);
-    hex_str += buf;
+  if (len < 12 || data == nullptr) {
+    return;
   }
+
+  if (data[1] + 1 > len) {
+    return;
+  }
+
   // State response
   if (data[10] == 0xC8) {
     if(!this->device_info_known_){
@@ -740,7 +746,9 @@ void MideaDehumComponent::processPacket(uint8_t *data, size_t len) {
       this->protocol_version_ = data[7];
       this->device_info_known_ = true;
     }
-    this->parseState();
+    if (len >= 32) {
+      this->parseState();
+    }
 #ifdef USE_MIDEA_DEHUM_HANDSHAKE
     if(!this->handshake_done_){
       this->handshake_done_ = true;

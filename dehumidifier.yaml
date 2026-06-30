@@ -33,7 +33,9 @@ uart:
 midea_dehum:
   id: midea_dehum_comp
   uart_id: uart_midea
+  handshake_enabled: false # Recommended when the device comes up with unknown/NA states after boot
   status_poll_interval: 1000 # Optional, how often should get a status update in ms (1000ms=1sec). Default: 1000ms
+  state_resync_interval: 30000 # Republish current values every 30s so HA can recover after reconnects
 
   # 🆕 Optional: Rename display modes to match your device’s front panel.
   # For example, your unit may label these as “Cont”, “Dry”, or “Smart”.

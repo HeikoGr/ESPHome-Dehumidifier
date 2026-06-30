@@ -95,13 +95,13 @@ The Midea WiFi dongle is just a UART-to-cloud bridge — unplug it and connect y
 
 ## ⚙️ ESPHome Configuration
 
-Example YAML with all supported sensors - controls, full example in [dehumidifier.yaml](https://raw.githubusercontent.com/Chreece/ESPHome-Dehumidifier/refs/heads/main/dehumidifier.yaml):
+Example YAML with all supported sensors - controls, full example in [dehumidifier.yaml](https://raw.githubusercontent.com/HeikoGr/ESPHome-Dehumidifier/refs/heads/main/dehumidifier.yaml):
 
 ```yaml
 external_components:
   - source:
       type: git
-      url: https://github.com/Chreece/ESPHome-Dehumidifier
+      url: https://github.com/HeikoGr/ESPHome-Dehumidifier
       ref: main
     components: [midea_dehum]
     refresh: 0min
