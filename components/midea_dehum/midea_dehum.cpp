@@ -594,8 +594,12 @@ void esphome::midea_dehum::MideaDehumComponent::update_capabilities_text(
 
   size_t start = 0;
   while (true) {
-    size_t comma = current.find(',', start);
-    std::string item = current.substr(start, comma - start);
+    size_t newline = current.find('\n', start);
+    std::string item = current.substr(start, newline - start);
+
+    if (item.rfind("- ", 0) == 0) {
+      item = item.substr(2);
+    }
 
     size_t first = item.find_first_not_of(" \t");
     size_t last = item.find_last_not_of(" \t");
@@ -605,9 +609,9 @@ void esphome::midea_dehum::MideaDehumComponent::update_capabilities_text(
     if (!item.empty())
       existing.push_back(item);
 
-    if (comma == std::string::npos)
+    if (newline == std::string::npos)
       break;
-    start = comma + 1;
+    start = newline + 1;
   }
 
   for (const auto &opt : options) {
@@ -623,8 +627,9 @@ void esphome::midea_dehum::MideaDehumComponent::update_capabilities_text(
 
   std::string joined;
   for (size_t i = 0; i < existing.size(); i++) {
+    joined += "- ";
     joined += existing[i];
-    if (i + 1 < existing.size()) joined += ", ";
+    if (i + 1 < existing.size()) joined += "\n";
   }
 
   this->capabilities_text_->publish_state(joined);
