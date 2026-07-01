@@ -1,6 +1,7 @@
 #include "midea_dehum.h"
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
+#include "esphome/core/controller_registry.h"
 #include "esphome/core/preferences.h"
 #include "esphome/core/version.h"
 #include <cmath>
@@ -13,6 +14,34 @@ static const char *const MODE_SELECT_SETPOINT = "Setpoint";
 static const char *const MODE_SELECT_CONTINUOUS = "Continuous";
 static const char *const MODE_SELECT_SMART = "Smart";
 static const char *const MODE_SELECT_CLOTHES_DRYING = "ClothesDrying";
+
+#ifdef USE_MIDEA_DEHUM_BINARY_SENSOR
+static void mark_binary_sensor_unavailable(binary_sensor::BinarySensor *obj) {
+  if (obj == nullptr) return;
+  obj->invalidate_state();
+}
+#endif
+
+#ifdef USE_MIDEA_DEHUM_SENSOR
+static void mark_sensor_unavailable(sensor::Sensor *obj) {
+  if (obj == nullptr) return;
+  obj->state = NAN;
+  obj->set_has_state(false);
+#if defined(USE_SENSOR) && defined(USE_CONTROLLER_REGISTRY)
+  ControllerRegistry::notify_sensor_update(obj);
+#endif
+}
+#endif
+
+#ifdef USE_MIDEA_DEHUM_SELECT
+static void mark_select_unavailable(select::Select *obj) {
+  if (obj == nullptr) return;
+  obj->set_has_state(false);
+#if defined(USE_SELECT) && defined(USE_CONTROLLER_REGISTRY)
+  ControllerRegistry::notify_select_update(obj);
+#endif
+}
+#endif
 
 static uint8_t networkStatus[19];
 static uint8_t currentHeader[10];
@@ -145,6 +174,11 @@ void MideaFilterCleanedButton::press_action() {
 #ifdef USE_MIDEA_DEHUM_FILTER
   if (this->parent_ == nullptr) return;
 
+  if (!this->parent_->supports_filter_feature()) {
+    ESP_LOGW(TAG, "Ignoring filter reset request because the device did not report filter support");
+    return;
+  }
+
   if (this->parent_->is_filter_request_active()) {
     this->parent_->set_filter_cleaned_flag(true);
     this->parent_->sendSetStatus();
@@ -156,6 +190,12 @@ void MideaFilterCleanedButton::press_action() {
 // Device IONizer
 #ifdef USE_MIDEA_DEHUM_ION
 void MideaDehumComponent::set_ion_state(bool on) {
+#ifdef USE_MIDEA_DEHUM_CAPABILITIES
+  if (this->capabilities_.finalized && !this->capabilities_.ionizer) {
+    ESP_LOGW(TAG, "Ignoring ionizer change because the device did not report ionizer support");
+    return;
+  }
+#endif
   if (this->ion_state_ == on) return;
   this->ion_state_ = on;
   if (this->ion_switch_)
@@ -177,6 +217,12 @@ void MideaIonSwitch::write_state(bool state) {
 // Defrost pump
 #ifdef USE_MIDEA_DEHUM_PUMP
 void MideaDehumComponent::set_pump_state(bool on) {
+#ifdef USE_MIDEA_DEHUM_CAPABILITIES
+  if (this->capabilities_.finalized && !this->capabilities_.pump) {
+    ESP_LOGW(TAG, "Ignoring pump change because the device did not report pump support");
+    return;
+  }
+#endif
   if (this->pump_state_ == on) return;
   this->pump_state_ = on;
   if (this->pump_switch_ != nullptr)
@@ -198,6 +244,12 @@ void MideaPumpSwitch::write_state(bool state) {
 // Toggle Device Buzzer on commands
 #ifdef USE_MIDEA_DEHUM_BEEP
 void MideaDehumComponent::set_beep_state(bool on) {
+#ifdef USE_MIDEA_DEHUM_CAPABILITIES
+  if (this->capabilities_.finalized && !this->capabilities_.beep_control) {
+    ESP_LOGW(TAG, "Ignoring beep control change because the device did not report beep support");
+    return;
+  }
+#endif
   // Only send if the user requested a change (not just a redundant write)
   bool was = this->beep_state_;
   if (was == on) {
@@ -333,6 +385,7 @@ static const CapabilityMap CAPABILITY_TABLE[] = {
 
 void MideaDehumComponent::processCapabilitiesPacket(uint8_t *data, size_t length) {
   if (length < 14) return;
+  this->capabilities_.received = true;
   std::vector<std::string> caps;
 
   size_t i = 12;
@@ -341,6 +394,8 @@ void MideaDehumComponent::processCapabilitiesPacket(uint8_t *data, size_t length
     uint8_t type = data[i + 1];
     uint8_t len  = data[i + 2];
     uint8_t val  = data[i + 3];
+
+    this->register_capability_(id, type);
 
     if (i + 3 + len > length) break;
 
@@ -468,6 +523,68 @@ void MideaDehumComponent::processCapabilitiesPacket(uint8_t *data, size_t length
     caps.push_back("No capabilities detected");
 
   this->update_capabilities_text(caps);
+}
+
+void MideaDehumComponent::register_capability_(uint8_t id, uint8_t type) {
+  if (type != 0x02) return;
+
+  switch (id) {
+    case 0x14:
+      this->capabilities_.mode_selection = true;
+      break;
+    case 0x17:
+    case 0x21:
+      this->capabilities_.filter = true;
+      break;
+    case 0x1D:
+      this->capabilities_.pump = true;
+      break;
+    case 0x1E:
+      this->capabilities_.ionizer = true;
+      break;
+    case 0x2C:
+      this->capabilities_.beep_control = true;
+      break;
+    case 0x2D:
+      this->capabilities_.tank_level = true;
+      break;
+    default:
+      break;
+  }
+}
+
+void MideaDehumComponent::finalize_capabilities_() {
+  if (this->capabilities_.finalized || !this->capabilities_.received) return;
+
+  this->capabilities_.finalized = true;
+  this->apply_capability_states_();
+
+  ESP_LOGI(TAG,
+           "Capabilities finalized: mode=%s beep=%s ionizer=%s pump=%s filter=%s tank=%s",
+           YESNO(this->capabilities_.mode_selection),
+           YESNO(this->capabilities_.beep_control),
+           YESNO(this->capabilities_.ionizer),
+           YESNO(this->capabilities_.pump),
+           YESNO(this->capabilities_.filter),
+           YESNO(this->capabilities_.tank_level));
+}
+
+void MideaDehumComponent::apply_capability_states_() {
+#ifdef USE_MIDEA_DEHUM_SELECT
+  if (!this->capabilities_.mode_selection) {
+    mark_select_unavailable(this->mode_select_);
+  }
+#endif
+#ifdef USE_MIDEA_DEHUM_FILTER
+  if (!this->capabilities_.filter) {
+    mark_binary_sensor_unavailable(this->filter_request_sensor_);
+  }
+#endif
+#ifdef USE_MIDEA_DEHUM_TANK_LEVEL
+  if (!this->capabilities_.tank_level) {
+    mark_sensor_unavailable(this->tank_level_sensor_);
+  }
+#endif
 }
 
 void esphome::midea_dehum::MideaDehumComponent::update_capabilities_text(
@@ -670,6 +787,9 @@ void MideaDehumComponent::loop() {
     });
     App.scheduler.set_timeout(this, "get_capabilities_more", 2200, [this]() {
       this->getDeviceCapabilitiesMore();
+    });
+    App.scheduler.set_timeout(this, "finalize_capabilities", 3500, [this]() {
+      this->finalize_capabilities_();
     });
   }
 #endif
@@ -1003,7 +1123,11 @@ void MideaDehumComponent::parseState() {
   // --- Ionizer (bit 6) ---
 #ifdef USE_MIDEA_DEHUM_ION
   bool new_ion_state = (serialRxBuf[19] & 0x40) != 0;
-  if (new_ion_state != this->ion_state_ || force_publish) {
+  bool ion_capability_ok = true;
+#ifdef USE_MIDEA_DEHUM_CAPABILITIES
+  ion_capability_ok = !this->capabilities_.finalized || this->capabilities_.ionizer;
+#endif
+  if (ion_capability_ok && (new_ion_state != this->ion_state_ || force_publish)) {
     if(this->state_.powerOn) {
       this->ion_state_ = new_ion_state;
       if (this->ion_switch_) this->ion_switch_->publish_state(new_ion_state);
@@ -1025,7 +1149,11 @@ void MideaDehumComponent::parseState() {
   // --- Optional: Pump bits (3–4) ---
 #ifdef USE_MIDEA_DEHUM_PUMP
   bool new_pump_state = (serialRxBuf[19] & 0x08) != 0;
-  if (new_pump_state != this->pump_state_  || force_publish) {
+  bool pump_capability_ok = true;
+#ifdef USE_MIDEA_DEHUM_CAPABILITIES
+  pump_capability_ok = !this->capabilities_.finalized || this->capabilities_.pump;
+#endif
+  if (pump_capability_ok && (new_pump_state != this->pump_state_  || force_publish)) {
     if(this->state_.powerOn) {
       this->pump_state_ = new_pump_state;
       if (this->pump_switch_) this->pump_switch_->publish_state(new_pump_state);
@@ -1036,7 +1164,11 @@ void MideaDehumComponent::parseState() {
   // --- Filter cleaning bit (7) ---
 #ifdef USE_MIDEA_DEHUM_FILTER
   bool new_filter_request = (serialRxBuf[19] & 0x80) >> 7;
-  if (new_filter_request != this->filter_request_state_  || force_publish) {
+  bool filter_capability_ok = true;
+#ifdef USE_MIDEA_DEHUM_CAPABILITIES
+  filter_capability_ok = !this->capabilities_.finalized || this->capabilities_.filter;
+#endif
+  if (filter_capability_ok && (new_filter_request != this->filter_request_state_  || force_publish)) {
     this->filter_request_state_ = new_filter_request;
     if (this->filter_request_sensor_) {
       this->filter_request_sensor_->publish_state(new_filter_request);
@@ -1048,8 +1180,12 @@ void MideaDehumComponent::parseState() {
 #ifdef USE_MIDEA_DEHUM_TANK_LEVEL
   uint8_t tank_byte = serialRxBuf[20];
   uint8_t new_tank_level = tank_byte & 0x7F;
+  bool tank_capability_ok = true;
+#ifdef USE_MIDEA_DEHUM_CAPABILITIES
+  tank_capability_ok = !this->capabilities_.finalized || this->capabilities_.tank_level;
+#endif
 
-  if (new_tank_level != this->tank_level_  || force_publish) {
+  if (tank_capability_ok && (new_tank_level != this->tank_level_  || force_publish)) {
     this->tank_level_ = new_tank_level;
     if (this->tank_level_sensor_)
       this->tank_level_sensor_->publish_state(new_tank_level);
@@ -1186,6 +1322,12 @@ void MideaDehumComponent::handleStateUpdateRequest(std::string requestedState, u
 }
 
 void MideaDehumComponent::set_operating_mode(uint8_t mode) {
+#ifdef USE_MIDEA_DEHUM_CAPABILITIES
+  if (this->capabilities_.finalized && !this->capabilities_.mode_selection) {
+    ESP_LOGW(TAG, "Ignoring mode change because the device did not report mode-selection support");
+    return;
+  }
+#endif
   std::string requested_state = this->state_.powerOn ? "on" : "off";
   this->handleStateUpdateRequest(requested_state, mode, this->state_.fanSpeed, this->state_.humiditySetpoint);
 }
@@ -1328,7 +1470,11 @@ void MideaDehumComponent::sendClimateState(){
     this->current_humidity = int(this->state_.currentHumidity);
     this->current_temperature = this->state_.currentTemperature;
 #ifdef USE_MIDEA_DEHUM_SELECT
-    if (this->mode_select_ != nullptr) {
+  bool mode_select_capability_ok = true;
+#ifdef USE_MIDEA_DEHUM_CAPABILITIES
+  mode_select_capability_ok = !this->capabilities_.finalized || this->capabilities_.mode_selection;
+#endif
+  if (mode_select_capability_ok && this->mode_select_ != nullptr) {
       this->mode_select_->publish_state(this->mode_select_option_for_(this->state_.mode));
     }
 #endif

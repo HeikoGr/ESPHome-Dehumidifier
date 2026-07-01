@@ -184,6 +184,13 @@ class MideaDehumComponent : public climate::Climate,
   void set_filter_cleaned_button(MideaFilterCleanedButton *b);
   void set_filter_cleaned_flag(bool flag) { this->filter_cleaned_flag_ = flag; }
   bool is_filter_request_active() const { return this->filter_request_state_; }
+  bool supports_filter_feature() const {
+#ifdef USE_MIDEA_DEHUM_CAPABILITIES
+    return !this->capabilities_.finalized || this->capabilities_.filter;
+#else
+    return true;
+#endif
+  }
 #endif
 #ifdef USE_MIDEA_DEHUM_ION
   void set_ion_switch(MideaIonSwitch *s);
@@ -219,6 +226,9 @@ class MideaDehumComponent : public climate::Climate,
   void processCapabilitiesPacket(uint8_t *data, size_t length);
   void getDeviceCapabilities();
   void getDeviceCapabilitiesMore();
+  void register_capability_(uint8_t id, uint8_t type);
+  void finalize_capabilities_();
+  void apply_capability_states_();
 #endif
 #ifdef USE_MIDEA_DEHUM_TIMER
   void set_timer_number(MideaTimerNumber *n);
@@ -366,6 +376,16 @@ class MideaDehumComponent : public climate::Climate,
 #ifdef USE_MIDEA_DEHUM_CAPABILITIES
   MideaCapabilitiesTextSensor *capabilities_text_{nullptr};
   bool capabilities_requested_{false};
+  struct RuntimeCapabilities {
+    bool finalized{false};
+    bool received{false};
+    bool mode_selection{false};
+    bool beep_control{false};
+    bool ionizer{false};
+    bool pump{false};
+    bool filter{false};
+    bool tank_level{false};
+  } capabilities_{};
 #endif
 
 };
