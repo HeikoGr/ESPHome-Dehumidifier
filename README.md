@@ -237,7 +237,9 @@ number:
 
 # Optional text sensor to show discovered device capabilities
 # Useful for diagnostics — helps confirm which features your model supports.
-# (Note: Not all capabilities are necessarily showed.)
+# Capability replies are device-specific and sometimes incomplete.
+# They are best treated as diagnostics, not as a strict source of truth for every control.
+# Keep this text sensor enabled if you want capability packets to be requested and logged shortly after boot.
 text_sensor:
   - platform: midea_dehum
     midea_dehum_id: midea_dehum_comp

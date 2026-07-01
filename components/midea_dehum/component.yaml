@@ -8,3 +8,4 @@ optional:
   - select.py
   - button.py
   - number.py
+  - text_sensor.py

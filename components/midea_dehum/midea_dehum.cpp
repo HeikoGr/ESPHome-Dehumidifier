@@ -33,16 +33,6 @@ static void mark_sensor_unavailable(sensor::Sensor *obj) {
 }
 #endif
 
-#ifdef USE_MIDEA_DEHUM_SELECT
-static void mark_select_unavailable(select::Select *obj) {
-  if (obj == nullptr) return;
-  obj->set_has_state(false);
-#if defined(USE_SELECT) && defined(USE_CONTROLLER_REGISTRY)
-  ControllerRegistry::notify_select_update(obj);
-#endif
-}
-#endif
-
 static uint8_t networkStatus[19];
 static uint8_t currentHeader[10];
 static uint8_t getStatusCommand[21] = {
@@ -387,6 +377,7 @@ void MideaDehumComponent::processCapabilitiesPacket(uint8_t *data, size_t length
   if (length < 14) return;
   this->capabilities_.received = true;
   std::vector<std::string> caps;
+  ESP_LOGI(TAG, "Capability packet received: len=%u", static_cast<unsigned>(length));
 
   size_t i = 12;
   while (i + 3 < length - 1) {
@@ -512,9 +503,20 @@ void MideaDehumComponent::processCapabilitiesPacket(uint8_t *data, size_t length
           }
           break;
       }
+    } else {
+      char buf[48];
+      snprintf(buf, sizeof(buf), "Unknown capability 0x%02X/0x%02X", id, type);
+      desc = buf;
+    }
 
-      caps.push_back(desc);
-    } 
+    ESP_LOGI(TAG,
+             "Capability: id=0x%02X type=0x%02X len=%u val=0x%02X %s",
+             id,
+             type,
+             len,
+             val,
+             desc.c_str());
+    caps.push_back(desc);
     
     i += 3 + len;
   }
@@ -570,11 +572,6 @@ void MideaDehumComponent::finalize_capabilities_() {
 }
 
 void MideaDehumComponent::apply_capability_states_() {
-#ifdef USE_MIDEA_DEHUM_SELECT
-  if (!this->capabilities_.mode_selection) {
-    mark_select_unavailable(this->mode_select_);
-  }
-#endif
 #ifdef USE_MIDEA_DEHUM_FILTER
   if (!this->capabilities_.filter) {
     mark_binary_sensor_unavailable(this->filter_request_sensor_);
@@ -1322,12 +1319,6 @@ void MideaDehumComponent::handleStateUpdateRequest(std::string requestedState, u
 }
 
 void MideaDehumComponent::set_operating_mode(uint8_t mode) {
-#ifdef USE_MIDEA_DEHUM_CAPABILITIES
-  if (this->capabilities_.finalized && !this->capabilities_.mode_selection) {
-    ESP_LOGW(TAG, "Ignoring mode change because the device did not report mode-selection support");
-    return;
-  }
-#endif
   std::string requested_state = this->state_.powerOn ? "on" : "off";
   this->handleStateUpdateRequest(requested_state, mode, this->state_.fanSpeed, this->state_.humiditySetpoint);
 }
@@ -1471,13 +1462,9 @@ void MideaDehumComponent::sendClimateState(){
     this->current_humidity = int(this->state_.currentHumidity);
     this->current_temperature = this->state_.currentTemperature;
 #ifdef USE_MIDEA_DEHUM_SELECT
-  bool mode_select_capability_ok = true;
-#ifdef USE_MIDEA_DEHUM_CAPABILITIES
-  mode_select_capability_ok = !this->capabilities_.finalized || this->capabilities_.mode_selection;
-#endif
-  if (mode_select_capability_ok && this->mode_select_ != nullptr) {
+  if (this->mode_select_ != nullptr) {
       this->mode_select_->publish_state(this->mode_select_option_for_(this->state_.mode));
-    }
+  }
 #endif
 #if defined(USE_MIDEA_DEHUM_SWING) || defined(USE_MIDEA_DEHUM_HORIZONTAL_SWING)
     // Default to OFF
