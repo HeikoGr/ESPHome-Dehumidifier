@@ -43,6 +43,19 @@ Supported entities:
 
 Optional entities can be included or excluded simply by adding or omitting them from your YAML.
 
+## Local Improvements
+
+Compared to [Chreece/ESPHome-Dehumidifier](https://github.com/Chreece/ESPHome-Dehumidifier), this repository currently adds and maintains:
+
+* an optional native mode select entity for the four Midea operating modes
+* optional temperature and humidity sensors for cleaner Home Assistant device modeling
+* capability-aware optional entities so unsupported features can stay unavailable instead of exposing misleading states
+* UART receive-path hardening for ESP8266 stability under sustained traffic
+* configurable `state_resync_interval` re-publishing for consumers that missed an unchanged state update
+* a post-command status refresh so Home Assistant and `web_server` converge quickly on the device-confirmed state after writes
+
+For physical button presses on the dehumidifier, `status_poll_interval` still defines how quickly Home Assistant and `web_server` see the change.
+
 ---
 
 ## 🧠 Background
@@ -96,13 +109,13 @@ The Midea WiFi dongle is just a UART-to-cloud bridge — unplug it and connect y
 
 ## ⚙️ ESPHome Configuration
 
-Example YAML with all supported sensors - controls, full example in [dehumidifier.yaml](https://raw.githubusercontent.com/Chreece/ESPHome-Dehumidifier/refs/heads/main/dehumidifier.yaml):
+Example YAML with all supported sensors - controls, full example in [dehumidifier.yaml](https://raw.githubusercontent.com/HeikoGr/ESPHome-Dehumidifier/refs/heads/main/dehumidifier.yaml):
 
 ```yaml
 external_components:
   - source:
       type: git
-      url: https://github.com/Chreece/ESPHome-Dehumidifier
+      url: https://github.com/HeikoGr/ESPHome-Dehumidifier
       ref: main
     components: [midea_dehum]
     refresh: 0min
@@ -118,6 +131,7 @@ midea_dehum:
   uart_id: uart_midea
   handshake_enabled: false # Optional if you have problems with unknown states on esp boot
   status_poll_interval: 1000 # Optional, how often should get a status update in ms (1000ms=1sec). Default: 1000ms
+  state_resync_interval: 60000 # Optional, re-publish current state even if unchanged. Useful if a UI/API consumer missed an earlier update.
 
   # 🆕 Optional: Rename display modes to match your device’s front panel.
   # For example, your unit may label these as “Cont”, “Dry”, or “Smart”.
@@ -231,6 +245,9 @@ text_sensor:
       name: "Device Capabilities"
 
 ```
+
+After any command written from Home Assistant or `web_server`, the component now requests a fresh device status frame shortly afterwards. That follow-up read keeps the climate entity, optional mode select, and the device-confirmed state aligned instead of relying only on optimistic local updates.
+
 All entities appear automatically in Home Assistant with native ESPHome support.
 
 ---

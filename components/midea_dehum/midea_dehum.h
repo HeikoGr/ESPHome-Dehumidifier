@@ -277,6 +277,7 @@ class MideaDehumComponent : public climate::Climate,
 #ifdef USE_MIDEA_DEHUM_SELECT
   const char *mode_select_option_for_(uint8_t mode) const;
 #endif
+  void schedule_status_refresh_(uint32_t delay_ms = 250);
   void writeHeader(uint8_t msg_type,
                    uint8_t agreement_version,
                    uint8_t frame_SyncCheck,
@@ -304,7 +305,7 @@ class MideaDehumComponent : public climate::Climate,
   bool device_info_known_ = false;
 
   uart::UARTComponent *uart_{nullptr};
-  uint32_t status_poll_interval_{30000};
+  uint32_t status_poll_interval_{1000};
   uint32_t state_resync_interval_{60000};
   uint32_t last_state_publish_ms_{0};
   bool state_initialized_{false};
@@ -327,7 +328,7 @@ class MideaDehumComponent : public climate::Climate,
 #endif
 #ifdef USE_MIDEA_DEHUM_PM25
   sensor::Sensor *pm25_sensor_{nullptr};
-  uint8_t pm25_{0};
+  uint16_t pm25_{0};
 #endif
 #ifdef USE_MIDEA_DEHUM_BUCKET
   binary_sensor::BinarySensor *bucket_full_sensor_{nullptr};

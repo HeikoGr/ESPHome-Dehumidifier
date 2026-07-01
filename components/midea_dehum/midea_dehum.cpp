@@ -1008,6 +1008,7 @@ void MideaDehumComponent::parseState() {
   if (temp >= 0.0f) temp += temperature_decimal; else temp -= temperature_decimal;
   float new_temp = temp;
   uint8_t new_error = serialRxBuf[31];
+  bool error_changed = (new_error != this->error_state_);
 
 #ifdef USE_MIDEA_DEHUM_SENSOR
   bool humidity_changed = (new_humidity != this->state_.currentHumidity);
@@ -1021,7 +1022,7 @@ void MideaDehumComponent::parseState() {
   if (new_humidity_set != this->state_.humiditySetpoint) { this->state_.humiditySetpoint = new_humidity_set; updated = true; }
   if (new_humidity != this->state_.currentHumidity) { this->state_.currentHumidity = new_humidity; updated = true; }
   if (fabs(new_temp - this->state_.currentTemperature) > 0.1f) { this->state_.currentTemperature = new_temp; updated = true; }
-  if (new_error != this->error_state_) { this->error_state_ = new_error; updated = true; }
+  if (error_changed) { this->error_state_ = new_error; updated = true; }
 
   if (updated || force_publish) {
     this->sendClimateState();
@@ -1038,8 +1039,7 @@ void MideaDehumComponent::parseState() {
 #endif
 
 #if defined(USE_MIDEA_DEHUM_ERROR) || defined(USE_MIDEA_DEHUM_BUCKET)
-    if (force_publish || this->error_state_ != new_error) {
-      this->error_state_ = new_error;
+  if (force_publish || error_changed) {
 #ifdef USE_MIDEA_DEHUM_ERROR
       if(this->error_sensor_) {this->error_sensor_->publish_state(this->error_state_);}
 #endif
@@ -1449,6 +1449,7 @@ void MideaDehumComponent::sendSetStatus() {
 
   // --- Send assembled frame ---
   this->sendMessage(0x02, 0x03, 0x00, 25, setStatusCommand);
+  this->schedule_status_refresh_();
 }
 
 void MideaDehumComponent::sendClimateState(){
@@ -1551,6 +1552,17 @@ void MideaDehumComponent::updateAndSendNetworkStatus(bool connected) {
 
 void MideaDehumComponent::getStatus() {
   this->sendMessage(0x03, 0x03, 0x00, 21, getStatusCommand);
+}
+
+void MideaDehumComponent::schedule_status_refresh_(uint32_t delay_ms) {
+#ifdef USE_MIDEA_DEHUM_HANDSHAKE
+  if (!this->handshake_done_) {
+    return;
+  }
+#endif
+  App.scheduler.set_timeout(this, "post_command_status_refresh", delay_ms, [this]() {
+    this->getStatus();
+  });
 }
 
 void MideaDehumComponent::sendMessage(uint8_t msgType, uint8_t agreementVersion, uint8_t frameSyncCheck, uint8_t payloadLength, uint8_t *payload) {
