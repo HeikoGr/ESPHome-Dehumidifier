@@ -56,6 +56,9 @@ class MideaBeepSwitch;
 #ifdef USE_MIDEA_DEHUM_SLEEP
 class MideaSleepSwitch;
 #endif
+#ifdef USE_MIDEA_DEHUM_SELECT
+class MideaModeSelect;
+#endif
 
 #ifdef USE_MIDEA_DEHUM_FILTER_BUTTON
 class MideaFilterCleanedButton : public button::Button, public Component {
@@ -107,6 +110,17 @@ class MideaSleepSwitch : public switch_::Switch, public Component {
 
  protected:
   void write_state(bool state) override;
+  MideaDehumComponent *parent_{nullptr};
+};
+#endif
+
+#ifdef USE_MIDEA_DEHUM_SELECT
+class MideaModeSelect : public select::Select, public Component {
+ public:
+  void set_parent(MideaDehumComponent *parent) { this->parent_ = parent; }
+
+ protected:
+  void control(size_t index) override;
   MideaDehumComponent *parent_{nullptr};
 };
 #endif
@@ -196,6 +210,9 @@ class MideaDehumComponent : public climate::Climate,
   void set_sleep_switch(MideaSleepSwitch *s);
   void set_sleep_state(bool on);
 #endif
+#ifdef USE_MIDEA_DEHUM_SELECT
+  void set_mode_select(MideaModeSelect *s);
+#endif
 #ifdef USE_MIDEA_DEHUM_CAPABILITIES
   void set_capabilities_text_sensor(MideaCapabilitiesTextSensor *sens) { this->capabilities_text_ = sens; }
   void update_capabilities_text(const std::vector<std::string> &options);
@@ -232,6 +249,7 @@ class MideaDehumComponent : public climate::Climate,
                                 uint8_t mode,
                                 uint8_t fan_speed,
                                 uint8_t humidity_setpoint);
+  void set_operating_mode(uint8_t mode);
   void updateAndSendNetworkStatus(bool connected);
   void getStatus();
   void sendMessage(uint8_t msg_type,
@@ -245,6 +263,10 @@ class MideaDehumComponent : public climate::Climate,
   
   void clearRxBuf();
   void clearTxBuf();
+  const char *preset_label_for_mode_(uint8_t mode) const;
+#ifdef USE_MIDEA_DEHUM_SELECT
+  const char *mode_select_option_for_(uint8_t mode) const;
+#endif
   void writeHeader(uint8_t msg_type,
                    uint8_t agreement_version,
                    uint8_t frame_SyncCheck,
@@ -316,6 +338,9 @@ class MideaDehumComponent : public climate::Climate,
 #ifdef USE_MIDEA_DEHUM_ION
   MideaIonSwitch *ion_switch_{nullptr};
   bool ion_state_{false};
+#endif
+#ifdef USE_MIDEA_DEHUM_SELECT
+  MideaModeSelect *mode_select_{nullptr};
 #endif
 #ifdef USE_MIDEA_DEHUM_SWING
   bool swing_state_{false};

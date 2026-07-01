@@ -9,6 +9,10 @@ namespace esphome {
 namespace midea_dehum {
 
 static const char *const TAG = "midea_dehum";
+static const char *const MODE_SELECT_SETPOINT = "Setpoint";
+static const char *const MODE_SELECT_CONTINUOUS = "Continuous";
+static const char *const MODE_SELECT_SMART = "Smart";
+static const char *const MODE_SELECT_CLOTHES_DRYING = "ClothesDrying";
 
 static uint8_t networkStatus[19];
 static uint8_t currentHeader[10];
@@ -260,6 +264,21 @@ void MideaDehumComponent::set_sleep_switch(MideaSleepSwitch *s) {
 void MideaSleepSwitch::write_state(bool state) {
   if (!this->parent_) return;
   this->parent_->set_sleep_state(state);
+}
+#endif
+
+#ifdef USE_MIDEA_DEHUM_SELECT
+void MideaDehumComponent::set_mode_select(MideaModeSelect *s) {
+  this->mode_select_ = s;
+  if (s != nullptr) {
+    s->set_parent(this);
+    s->publish_state(this->mode_select_option_for_(this->state_.mode));
+  }
+}
+
+void MideaModeSelect::control(size_t index) {
+  if (this->parent_ == nullptr) return;
+  this->parent_->set_operating_mode(static_cast<uint8_t>(index + 1));
 }
 #endif
 
@@ -568,6 +587,36 @@ void MideaDehumComponent::set_uart(esphome::uart::UARTComponent *uart) {
   this->set_uart_parent(uart);
   this->uart_ = uart;
 }
+
+const char *MideaDehumComponent::preset_label_for_mode_(uint8_t mode) const {
+  switch (mode) {
+    case 1:
+      return this->display_mode_setpoint_.c_str();
+    case 2:
+      return this->display_mode_continuous_.c_str();
+    case 4:
+      return this->display_mode_clothes_drying_.c_str();
+    case 3:
+    default:
+      return this->display_mode_smart_.c_str();
+  }
+}
+
+#ifdef USE_MIDEA_DEHUM_SELECT
+const char *MideaDehumComponent::mode_select_option_for_(uint8_t mode) const {
+  switch (mode) {
+    case 1:
+      return MODE_SELECT_SETPOINT;
+    case 2:
+      return MODE_SELECT_CONTINUOUS;
+    case 4:
+      return MODE_SELECT_CLOTHES_DRYING;
+    case 3:
+    default:
+      return MODE_SELECT_SMART;
+  }
+}
+#endif
 
 void MideaDehumComponent::setup() {
 #if ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 4, 0)
@@ -1136,6 +1185,11 @@ void MideaDehumComponent::handleStateUpdateRequest(std::string requestedState, u
   }
 }
 
+void MideaDehumComponent::set_operating_mode(uint8_t mode) {
+  std::string requested_state = this->state_.powerOn ? "on" : "off";
+  this->handleStateUpdateRequest(requested_state, mode, this->state_.fanSpeed, this->state_.humiditySetpoint);
+}
+
 void MideaDehumComponent::sendSetStatus() {
   memset(setStatusCommand, 0, sizeof(setStatusCommand));
 
@@ -1268,31 +1322,16 @@ void MideaDehumComponent::sendClimateState(){
       this->fan_mode = climate::CLIMATE_FAN_HIGH;
 
     // Determine mode preset
-    switch (this->state_.mode) {
-      case 1:
-        this->set_custom_preset_(display_mode_setpoint_.c_str());
-        break;
-
-      case 2:
-        this->set_custom_preset_(display_mode_continuous_.c_str());
-        break;
-
-      case 3:
-        this->set_custom_preset_(display_mode_smart_.c_str());
-        break;
-
-      case 4:
-        this->set_custom_preset_(display_mode_clothes_drying_.c_str());
-        break;
-
-      default:
-        this->set_custom_preset_(display_mode_smart_.c_str());
-        break;
-    }
+    this->set_custom_preset_(this->preset_label_for_mode_(this->state_.mode));
 
     this->target_humidity = int(this->state_.humiditySetpoint);
     this->current_humidity = int(this->state_.currentHumidity);
     this->current_temperature = this->state_.currentTemperature;
+#ifdef USE_MIDEA_DEHUM_SELECT
+    if (this->mode_select_ != nullptr) {
+      this->mode_select_->publish_state(this->mode_select_option_for_(this->state_.mode));
+    }
+#endif
 #if defined(USE_MIDEA_DEHUM_SWING) || defined(USE_MIDEA_DEHUM_HORIZONTAL_SWING)
     // Default to OFF
     climate::ClimateSwingMode swing = climate::CLIMATE_SWING_OFF;

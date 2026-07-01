@@ -25,6 +25,7 @@ Supported entities:
 | Entity Type     | Description |
 |------------------|-------------|
 | **Climate**      | Power, mode, fan speed, swing (vertical/horizontal) and presets |
+| **Mode Select (optional)** | Exposes the four native dehumidifier operating modes as an explicit selector |
 | **Temperature Sensor (optional)** | Reports the current room temperature as a native sensor |
 | **Humidity Sensor (optional)** | Reports the current room humidity as a native sensor |
 | **Bucket Full Binary Sensor (optional)** | "Bucket Full" indicator |
@@ -141,6 +142,15 @@ climate:
     swing: true
 # Optional horizontal swing control (if supported)
     horizontal_swing: true
+
+# Optional explicit operating mode selector.
+# Useful if you want a dedicated mode control in HA while keeping the climate
+# entity for current humidity/temperature and target humidity.
+select:
+  - platform: midea_dehum
+    midea_dehum_id: midea_dehum_comp
+    mode:
+      name: "Operating Mode"
 
 binary_sensor:
   - platform: midea_dehum

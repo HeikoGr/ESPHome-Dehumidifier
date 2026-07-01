@@ -5,5 +5,6 @@ files:
 optional:
   - sensor.py
   - switch.py
+  - select.py
   - button.py
   - number.py
