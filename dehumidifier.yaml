@@ -1,20 +1,39 @@
+substitutions:
+  name: comfee-dehumidifier
+  friendly_name: Comfee Luftentfeuchter
+
 esphome:
-  name: midea-dehumidifier # You can change this
+  name: ${name}
+  friendly_name: ${friendly_name}
 
-# replace with your esp settings
-esp32:
-  board: esp32dev
-  framework:
-    type: esp-idf
+esp8266:
+  board: esp01_1m
 
-# replace with your wifi settings
+logger:
+  baud_rate: 0   # UART für Midea-Protokoll – Logger über UART deaktivieren
+
+api:
+  encryption:
+    key: !secret api_key_dehumidifier
+
+ota:
+  - platform: esphome
+    password: !secret ota_key_dehumidifier
+
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  min_auth_mode: WPA2
+  power_save_mode: light
+  use_address: 192.168.178.76
+  ap:
+    ssid: "${name} Fallback"
+    password: !secret fallback_password
 
-ota:
-  platform: esphome
-  password: !secret ota_update # replace with your password
+captive_portal:
+
+web_server:
+  port: 80
 
 external_components:
   - source:
@@ -26,114 +45,62 @@ external_components:
 
 uart:
   id: uart_midea
-  tx_pin: GPIO16 # replace with the TX pin used from esp
-  rx_pin: GPIO17 # replace with the RX pin used from esp
+  tx_pin: GPIO1
+  rx_pin: GPIO3
   baud_rate: 9600
 
 midea_dehum:
   id: midea_dehum_comp
   uart_id: uart_midea
+  status_poll_interval: 1000
   handshake_enabled: false # Recommended when the device comes up with unknown/NA states after boot
-  status_poll_interval: 1000 # Optional, how often should get a status update in ms (1000ms=1sec). Default: 1000ms
   state_resync_interval: 30000 # Republish current values every 30s so HA can recover after reconnects
-
-  # 🆕 Optional: Rename display modes to match your device’s front panel.
-  # For example, your unit may label these as “Cont”, “Dry”, or “Smart”.
-  # These names only affect how the presets appear in Home Assistant — 
-  # the internal logic and protocol remain the same.
-  # 💡 Tip:
-  # If any of the modes below are set to "UNUSED" (case-insensitive),
-  # that preset will NOT appear in the Home Assistant UI.
-  # Use this if your device doesn’t support or respond to a specific mode.
-  # For instance, if pressing “SMART”, your unit doesn't change any mode,
-  # set display_mode_smart: "UNUSED" to hide it from the UI.
-  display_mode_setpoint: 'UNUSED'
-  display_mode_continuous: 'Cont'
+  display_mode_setpoint: 'Setpoint'
+  display_mode_continuous: 'Continuous'
   display_mode_smart: 'Smart'
   display_mode_clothes_drying: 'Dry'
 
 climate:
   - platform: midea_dehum
     midea_dehum_id: midea_dehum_comp
-    name: "Inventor Dehumidifier"
-# Optional vertical swing control (if supported)
-    swing: true
-# Optional horizontal swing control (if supported)
-    horizontal_swing: true
+    name: "Comfee Luftentfeuchter"
 
 binary_sensor:
   - platform: midea_dehum
     midea_dehum_id: midea_dehum_comp
-# Optional sensor to inform when the Bucket is full
     bucket_full:
       name: "Bucket Full"
-# Optional sensor to inform that a filter cleaning is required (only if supported)
-    clean_filter:
-      name: "Clean Filter Request"
-# Optional sensor to inform if the defrosting procedure running (only if supported)
-    defrost:
-      name: "Defrosting"
 
 button:
   - platform: midea_dehum
     midea_dehum_id: midea_dehum_comp
-# Optional button to reset the filter clean binary_sensor
-    filter_cleaned:
-      name: "Reset Filter Cleaning"
 
 sensor:
   - platform: midea_dehum
     midea_dehum_id: midea_dehum_comp
-# Optional current temperature sensor for area assignment and automations
     temperature:
       name: "Current Temperature"
-# Optional current humidity sensor for area assignment and automations
     humidity:
       name: "Current Humidity"
-# Optional error sensor
     error:
       name: "Error Code"
-# Optional tank water level sensor (if supported)
-    tank_level:
-      name: "Tank water level"
-# Optional pm2.5 sensor (if supported)
-    pm25:
-      name: "pm2.5"
+  - platform: wifi_signal
+    name: "${friendly_name} WiFi RSSI"
+    update_interval: 60s
+    entity_category: diagnostic
 
-# Optional switches
 switch:
   - platform: midea_dehum
     midea_dehum_id: midea_dehum_comp
-# Optional ionizer control, add this block only if your device has Ionizer
-    ionizer:
-      name: "Ionizer"
-# Optional control the device pump (if supported)
-    pump:
-      name: 'Pump'
-# Optional sleep mode toggle (not all models support this)
-# Enables or disables “Sleep” mode if available on your device (not tested!).
-    sleep:
-      name: "Sleep Mode"
-# Optional beep control
-# When enabled, the device will emit a beep sound when it receives
-# commands (e.g. from Home Assistant or OTA updates).
     beep:
       name: "Beep on Command"
 
-# Optional timer number entity for the internal device timer
-# When device off -> timer to turn on
-# When device on -> timer to turn off
-# Toggling the device on/off resets the timer
-# 0.5h increments, max: 24h
 number:
   - platform: midea_dehum
     midea_dehum_id: midea_dehum_comp
     timer:
       name: "Internal Device Timer"
 
-# Optional text sensor to show discovered device capabilities
-# Useful for diagnostics — helps confirm which features your model supports.
-# (Note: Not all capabilities are necessarily showed.)
 text_sensor:
   - platform: midea_dehum
     midea_dehum_id: midea_dehum_comp

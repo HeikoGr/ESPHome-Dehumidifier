@@ -735,7 +735,8 @@ void MideaDehumComponent::processPacket(uint8_t *data, size_t len) {
     return;
   }
 
-  if (data[1] + 1 > len) {
+  // Byte 1 contains the full frame length including the header.
+  if (data[1] > len) {
     return;
   }
 
