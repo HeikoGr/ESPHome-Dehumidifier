@@ -377,6 +377,8 @@ class MideaDehumComponent : public climate::Climate,
 #ifdef USE_MIDEA_DEHUM_CAPABILITIES
   MideaCapabilitiesTextSensor *capabilities_text_{nullptr};
   bool capabilities_requested_{false};
+  uint32_t last_capability_request_ms_{0};
+  uint8_t capability_request_attempts_{0};
   struct RuntimeCapabilities {
     bool finalized{false};
     bool received{false};

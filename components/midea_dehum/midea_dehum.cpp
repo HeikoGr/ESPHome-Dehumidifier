@@ -777,17 +777,33 @@ void MideaDehumComponent::loop() {
   }
 #endif
 #ifdef USE_MIDEA_DEHUM_CAPABILITIES
-  if (!this->capabilities_requested_) {
-    this->capabilities_requested_ = true;
-    App.scheduler.set_timeout(this, "get_capabilities", 2000, [this]() {
+  if (!this->capabilities_.finalized) {
+    uint32_t now = millis();
+    bool should_request_capabilities = this->device_info_known_ && !this->capabilities_.received &&
+                                       this->capability_request_attempts_ < 3 &&
+                                       (!this->capabilities_requested_ ||
+                                        (now - this->last_capability_request_ms_) >= 5000);
+    if (should_request_capabilities) {
+      this->capabilities_requested_ = true;
+      this->last_capability_request_ms_ = now;
+      this->capability_request_attempts_++;
+      ESP_LOGI(TAG, "Requesting device capabilities (attempt %u)", this->capability_request_attempts_);
       this->getDeviceCapabilities();
-    });
-    App.scheduler.set_timeout(this, "get_capabilities_more", 2200, [this]() {
-      this->getDeviceCapabilitiesMore();
-    });
-    App.scheduler.set_timeout(this, "finalize_capabilities", 3500, [this]() {
+      App.scheduler.set_timeout(this, "get_capabilities_more", 200, [this]() {
+        this->getDeviceCapabilitiesMore();
+      });
+    }
+
+    if (this->capabilities_.received) {
       this->finalize_capabilities_();
-    });
+    } else if (this->capability_request_attempts_ >= 3 &&
+               (now - this->last_capability_request_ms_) >= 1500) {
+      ESP_LOGW(TAG, "No capability response received after %u attempts", this->capability_request_attempts_);
+      this->capabilities_.finalized = true;
+      if (this->capabilities_text_ != nullptr && this->capabilities_text_->state.empty()) {
+        this->capabilities_text_->publish_state("No capability reply");
+      }
+    }
   }
 #endif
 
